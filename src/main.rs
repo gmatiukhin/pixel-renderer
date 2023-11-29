@@ -1,5 +1,5 @@
-use pixel_renderer::drawing::BresenhamLine;
-use pixels::{Pixels, SurfaceTexture};
+use pixel_renderer::drawing::{BresenhamLine, WuLine};
+use pixels::{PixelsBuilder, SurfaceTexture};
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -22,7 +22,10 @@ fn main() {
     let mut pixels = {
         let size = window.inner_size();
         let surface_texture = SurfaceTexture::new(size.width, size.height, &window);
-        Pixels::new(size.width, size.height, surface_texture).unwrap()
+        PixelsBuilder::new(size.width, size.height, surface_texture)
+            .enable_vsync(true)
+            .build()
+            .unwrap()
     };
 
     if let Err(e) = event_loop.run(move |event, elwt| match event {
@@ -53,23 +56,34 @@ fn main() {
                 let rgba = [0, 0xaa, 0, 0xff];
                 pixel.copy_from_slice(&rgba);
             }
+            pixels.render().expect("Error drawing pixels.");
 
-            let (width, height): (i32, i32) = window.inner_size().into();
-            for (x, y) in BresenhamLine::new((0, 0), (width - 1, height - 1))
-                .chain(BresenhamLine::new(
-                    (width - 1, height - 1),
-                    (width - 1, height / 2),
-                ))
-                .chain(BresenhamLine::new((width - 1, height / 2), (width / 2, 0)))
+            let mut frame: Vec<&mut [u8]> = pixels.frame_mut().chunks_exact_mut(4).collect();
+
+            use pixel_renderer::drawing::Line;
+
+            let (w, h): (i32, i32) = window.inner_size().into();
+            let o = 50;
+            for p in WuLine::new((0, 0), (w - 1, h - 1))
+                .chain(WuLine::new((w - 1, h - 1), (w - 1, h / 2)))
+                .chain(WuLine::new((w - 1, h / 2), (w / 2, 0)))
+                .chain(WuLine::new((w / 2, 0), (0, 0)))
+                .chain(BresenhamLine::new((0, o), (w - 1 - o, h - 1)))
+                .chain(BresenhamLine::new((w - 1 - o, h - 1), (w - 1 - o, h / 2)))
+                .chain(BresenhamLine::new((w - 1 - o, h / 2), (w / 2, o)))
+                .chain(BresenhamLine::new((w / 2, o), (0, o)))
             {
-                let idx = width as usize * y as usize + x as usize;
+                let (x, y, a) = match p {
+                    pixel_renderer::drawing::Pixel::Normal { x, y } => (x, y, 0xff),
+                    pixel_renderer::drawing::Pixel::AntiAliased { x, y, a } => (x, y, a),
+                };
+                let idx = w as usize * y as usize + x as usize;
                 if idx >= frame.len() {
-                    println!("{x}, {y}");
-                    println!("{}", idx);
+                    eprintln!("{x}, {y}");
+                    eprintln!("{}", idx);
                     continue;
                 }
-                frame[width as usize * y as usize + x as usize]
-                    .copy_from_slice(&[0xff, 0xff, 0xff, 0xff]);
+                frame[w as usize * y as usize + x as usize].copy_from_slice(&[0xff, 0xff, 0xff, a]);
             }
 
             pixels.render().expect("Error drawing pixels.");
