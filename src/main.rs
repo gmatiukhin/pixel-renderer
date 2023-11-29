@@ -48,7 +48,7 @@ fn main() {
             ..
         } => {
             // let frame = pixels.frame_mut();
-            pixels.render().expect("Error drawind pixels.");
+            pixels.render().expect("Error drawing pixels.");
         }
         _ => (),
     }) {

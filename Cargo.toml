@@ -1,5 +1,5 @@
 [package]
-name = "pixel-renerer"
+name = "pixel-renderer"
 version = "0.1.0"
 edition = "2021"
 
