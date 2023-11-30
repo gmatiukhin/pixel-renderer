@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 pub trait Line: Iterator {
     fn new(from: (i32, i32), to: (i32, i32)) -> Self;
 }
@@ -5,6 +7,60 @@ pub trait Line: Iterator {
 pub enum Pixel {
     Normal { x: i32, y: i32 },
     AntiAliased { x: i32, y: i32, a: u8 },
+}
+
+pub struct HasStart;
+pub struct HasEnd;
+
+pub struct LineBuilder<Line, Valid = ()> {
+    path: Vec<(i32, i32)>,
+    _line: PhantomData<Line>,
+    _is_line_valid: PhantomData<Valid>,
+}
+
+impl<L: Line, S> LineBuilder<L, S> {
+    pub fn start(x: i32, y: i32) -> LineBuilder<L, HasStart> {
+        LineBuilder {
+            path: vec![(x, y)],
+            _line: PhantomData,
+            _is_line_valid: PhantomData,
+        }
+    }
+}
+
+impl<L: Line> LineBuilder<L, HasStart> {
+    pub fn to(self, x: i32, y: i32) -> LineBuilder<L, HasEnd> {
+        let mut path = self.path;
+        path.push((x, y));
+        LineBuilder {
+            path,
+            _line: PhantomData,
+            _is_line_valid: PhantomData,
+        }
+    }
+}
+
+impl<L: Line> LineBuilder<L, HasEnd> {
+    pub fn to(mut self, x: i32, y: i32) -> LineBuilder<L, HasEnd> {
+        self.path.push((x, y));
+        self
+    }
+
+    /// Consumes the builder and returns an iterator over line pixels.
+    pub fn end(self) -> impl Iterator<Item = <L as Iterator>::Item> {
+        self.path
+            .clone()
+            .into_iter()
+            .zip(self.path.into_iter().skip(1))
+            .flat_map(|(p0, p1)| L::new(p0, p1))
+    }
+
+    /// Consumes the builder and returns an iterator over line pixels.
+    /// Additionally creates a line between the last point and the first one.
+    pub fn close(mut self) -> impl Iterator<Item = <L as Iterator>::Item> {
+        self.path.push(self.path[0]);
+        self.end()
+    }
 }
 
 pub struct BresenhamLine {

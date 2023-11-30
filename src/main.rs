@@ -1,4 +1,4 @@
-use pixel_renderer::drawing::{BresenhamLine, WuLine};
+use pixel_renderer::drawing::{BresenhamLine, LineBuilder, WuLine};
 use pixels::{PixelsBuilder, SurfaceTexture};
 use winit::{
     dpi::LogicalSize,
@@ -24,6 +24,7 @@ fn main() {
         let surface_texture = SurfaceTexture::new(size.width, size.height, &window);
         PixelsBuilder::new(size.width, size.height, surface_texture)
             .enable_vsync(true)
+            .blend_state(pixels::wgpu::BlendState::REPLACE)
             .build()
             .unwrap()
     };
@@ -60,18 +61,20 @@ fn main() {
 
             let mut frame: Vec<&mut [u8]> = pixels.frame_mut().chunks_exact_mut(4).collect();
 
-            use pixel_renderer::drawing::Line;
-
             let (w, h): (i32, i32) = window.inner_size().into();
             let o = 50;
-            for p in WuLine::new((0, 0), (w - 1, h - 1))
-                .chain(WuLine::new((w - 1, h - 1), (w - 1, h / 2)))
-                .chain(WuLine::new((w - 1, h / 2), (w / 2, 0)))
-                .chain(WuLine::new((w / 2, 0), (0, 0)))
-                .chain(BresenhamLine::new((0, o), (w - 1 - o, h - 1)))
-                .chain(BresenhamLine::new((w - 1 - o, h - 1), (w - 1 - o, h / 2)))
-                .chain(BresenhamLine::new((w - 1 - o, h / 2), (w / 2, o)))
-                .chain(BresenhamLine::new((w / 2, o), (0, o)))
+            for p in LineBuilder::<WuLine>::start(0, 0)
+                .to(w - 1, h - 1)
+                .to(w - 1, h / 2)
+                .to(w / 2, 0)
+                .close()
+                .chain(
+                    LineBuilder::<BresenhamLine>::start(0, o)
+                        .to(w - 1 - o, h - 1)
+                        .to(w - 1 - o, h / 2)
+                        .to(w / 2, o)
+                        .close(),
+                )
             {
                 let (x, y, a) = match p {
                     pixel_renderer::drawing::Pixel::Normal { x, y } => (x, y, 0xff),
@@ -83,7 +86,7 @@ fn main() {
                     eprintln!("{}", idx);
                     continue;
                 }
-                frame[w as usize * y as usize + x as usize].copy_from_slice(&[0xff, 0xff, 0xff, a]);
+                frame[idx].copy_from_slice(&[0xff, 0xff, 0xff, a]);
             }
 
             pixels.render().expect("Error drawing pixels.");
