@@ -1,3 +1,4 @@
+use palette::{blend::Compose, Srgba};
 use pixel_renderer::drawing::{BresenhamLine, LineBuilder, WuLine};
 use pixels::{PixelsBuilder, SurfaceTexture};
 use winit::{
@@ -54,15 +55,12 @@ fn main() {
         } => {
             let mut frame: Vec<&mut [u8]> = pixels.frame_mut().chunks_exact_mut(4).collect();
             for pixel in &mut frame {
-                let rgba = [0, 0xaa, 0, 0xff];
+                let rgba = [0, 0, 0, 0xff];
                 pixel.copy_from_slice(&rgba);
             }
-            pixels.render().expect("Error drawing pixels.");
-
-            let mut frame: Vec<&mut [u8]> = pixels.frame_mut().chunks_exact_mut(4).collect();
 
             let (w, h): (i32, i32) = window.inner_size().into();
-            let o = 50;
+            let o = 20;
             for p in LineBuilder::<WuLine>::start(0, 0)
                 .to(w - 1, h - 1)
                 .to(w - 1, h / 2)
@@ -82,11 +80,17 @@ fn main() {
                 };
                 let idx = w as usize * y as usize + x as usize;
                 if idx >= frame.len() {
-                    eprintln!("{x}, {y}");
-                    eprintln!("{}", idx);
+                    // Indices go out of bounds only if Wu's line endpoints lie directly in the
+                    // bottom right corner. Hightly unlikely to happen often so we can just ignore
+                    // them.
                     continue;
                 }
-                frame[idx].copy_from_slice(&[0xff, 0xff, 0xff, a]);
+                let dest = &frame[idx];
+                let dest: Srgba<f32> = Srgba::new(dest[0], dest[1], dest[2], dest[3]).into_format();
+                let src: Srgba<f32> = Srgba::new(0xff_u8, 0xff_u8, 0xff_u8, a).into_format();
+                let dest = src.over(dest);
+                let dest: [u8; 4] = dest.into_format().into();
+                frame[idx].copy_from_slice(&dest);
             }
 
             pixels.render().expect("Error drawing pixels.");
