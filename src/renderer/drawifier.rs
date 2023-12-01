@@ -16,7 +16,7 @@ impl Renderer for Drawifier {
         frame: &mut [&mut [u8]],
     ) {
         for pixel in &mut *frame {
-            let rgba = [0, 0xaa, 0, 0xff];
+            let rgba = [0, 0, 0, 0xff];
             pixel.copy_from_slice(&rgba);
         }
 
@@ -25,11 +25,14 @@ impl Renderer for Drawifier {
                 Pixel::Normal { x, y } => (x, y, 0xff),
                 Pixel::AntiAliased { x, y, a } => (x, y, a),
             };
-            let idx = camera.canvas_width as usize * y as usize + x as usize;
+            let idx = camera.image_width as usize * y as usize + x as usize;
             if idx >= frame.len() {
                 // Indices go out of bounds only if Wu's line endpoints lie directly in the
                 // bottom right corner. Hightly unlikely to happen often so we can just ignore
                 // them.
+                continue;
+            }
+            if x >= camera.image_width as i32 || y >= camera.image_height as i32 {
                 continue;
             }
             let dest = &frame[idx];

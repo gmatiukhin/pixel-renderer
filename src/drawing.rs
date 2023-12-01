@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 
+use glam::Vec2;
+
 pub type Shape2D = Vec<Pixel>;
 
 pub trait Line: Iterator<Item = Pixel> {
@@ -8,46 +10,113 @@ pub trait Line: Iterator<Item = Pixel> {
         Self: Sized;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Pixel {
     Normal { x: i32, y: i32 },
     AntiAliased { x: i32, y: i32, a: u8 },
 }
 
+impl From<(i32, i32)> for Pixel {
+    fn from(value: (i32, i32)) -> Self {
+        Self::Normal {
+            x: value.0,
+            y: value.1,
+        }
+    }
+}
+
+impl From<Vec2> for Pixel {
+    fn from(value: Vec2) -> Self {
+        Self::Normal {
+            x: value.x as i32,
+            y: value.y as i32,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct NoPoints;
+#[derive(Debug)]
 pub struct HasStart;
+#[derive(Debug)]
 pub struct HasEnd;
 
 pub struct LineBuilder<Line, Valid = ()> {
     path: Vec<(i32, i32)>,
+    skip_line: Vec<(usize, usize)>,
+    last_line_beginning: usize,
     _line: PhantomData<Line>,
-    _is_line_valid: PhantomData<Valid>,
+    _line_state: PhantomData<Valid>,
+}
+
+impl<L, V> std::fmt::Debug for LineBuilder<L, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LineBuilder")
+            .field("path", &self.path)
+            .field("skip_line", &self.skip_line)
+            .field("last_line_beginning", &self.last_line_beginning)
+            .finish()
+    }
 }
 
 impl<L: Line, S> LineBuilder<L, S> {
-    pub fn start(x: i32, y: i32) -> LineBuilder<L, HasStart> {
+    pub fn new() -> LineBuilder<L, NoPoints> {
         LineBuilder {
-            path: vec![(x, y)],
+            path: vec![],
+            skip_line: vec![],
+            last_line_beginning: 0,
             _line: PhantomData,
-            _is_line_valid: PhantomData,
+            _line_state: PhantomData,
+        }
+    }
+}
+
+impl<L: Line> LineBuilder<L, NoPoints> {
+    /// Starts a new line from `p`
+    pub fn from(self, p: (i32, i32)) -> LineBuilder<L, HasStart> {
+        LineBuilder {
+            path: vec![p],
+            skip_line: vec![],
+            last_line_beginning: 0,
+            _line: PhantomData,
+            _line_state: PhantomData,
         }
     }
 }
 
 impl<L: Line> LineBuilder<L, HasStart> {
-    pub fn to(self, x: i32, y: i32) -> LineBuilder<L, HasEnd> {
+    pub fn to(self, p: (i32, i32)) -> LineBuilder<L, HasEnd> {
         let mut path = self.path;
-        path.push((x, y));
+        path.push(p);
         LineBuilder {
             path,
-            _line: PhantomData,
-            _is_line_valid: PhantomData,
+            skip_line: self.skip_line,
+            last_line_beginning: self.last_line_beginning,
+            _line: self._line,
+            _line_state: PhantomData,
         }
     }
 }
 
 impl<L: Line> LineBuilder<L, HasEnd> {
-    pub fn to(mut self, x: i32, y: i32) -> LineBuilder<L, HasEnd> {
-        self.path.push((x, y));
+    /// Draws line to `p`
+    pub fn to(mut self, p: (i32, i32)) -> LineBuilder<L, HasEnd> {
+        self.path.push(p);
+        self
+    }
+
+    /// Moves to `p` without drawind and starts a new line
+    pub fn from(mut self, p: (i32, i32)) -> LineBuilder<L, HasEnd> {
+        self.path.push(p);
+        self.skip_line
+            .push((self.path.len() - 2, self.path.len() - 1));
+        self.last_line_beginning = self.path.len() - 1;
+        self
+    }
+
+    /// Draws a line between the last point and the first one.
+    pub fn close(mut self) -> LineBuilder<L, HasEnd> {
+        self.path.push(self.path[self.last_line_beginning]);
         self
     }
 
@@ -56,18 +125,19 @@ impl<L: Line> LineBuilder<L, HasEnd> {
         self.path
             .clone()
             .into_iter()
-            .zip(self.path.into_iter().skip(1))
-            .flat_map(|(p0, p1)| L::new(p0, p1))
+            .enumerate()
+            .zip(self.path.into_iter().enumerate().skip(1))
+            .filter(move |((i0, _), (i1, _))| !self.skip_line.contains(&(*i0, *i1)))
+            .flat_map(|((_, p0), (_, p1))| L::new(p0, p1))
     }
 
-    /// Consumes the builder and returns an iterator over line pixels.
-    /// Additionally creates a line between the last point and the first one.
-    pub fn close(mut self) -> impl Iterator<Item = Pixel> {
-        self.path.push(self.path[0]);
-        self.end()
+    /// Returns a `Shape2D` formed by the line pixels
+    pub fn shape(self) -> Shape2D {
+        self.end().collect()
     }
 }
 
+#[derive(Debug)]
 pub struct BresenhamLine {
     p: (i32, i32),
     to: (i32, i32),
@@ -129,6 +199,7 @@ impl Iterator for BresenhamLine {
     }
 }
 
+#[derive(Debug)]
 pub struct WuLine {
     steep: bool,
     x: i32,

@@ -1,6 +1,8 @@
 mod drawifier;
+mod renderer_3d;
 
 pub use drawifier::Drawifier;
+pub use renderer_3d::*;
 
 pub struct World<R: Renderer> {
     pub camera: Camera,
@@ -16,7 +18,10 @@ impl<R: Renderer> World<R> {
 
 pub struct Camera {
     pub canvas_width: u32,
-    pub _canvas_height: u32,
+    pub canvas_height: u32,
+    pub image_width: u32,
+    pub image_height: u32,
+    pub canvas_distance: f32,
 }
 
 pub trait Renderer {
