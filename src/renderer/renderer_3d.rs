@@ -43,7 +43,7 @@ impl Renderer for Rasterizer {
                             / camera.canvas_height as f32;
                         println!("NDC: {x_proj_normal}, {y_proj_normal}");
 
-                        // Project normalized coordinates to image/screen space
+                        // Project normalized coordinates to raster space
                         let x_pix = (x_proj_normal * camera.image_width as f32) as i32;
                         let y_pix = (y_proj_normal * camera.image_height as f32) as i32;
                         println!("Image space: {x_pix}, {y_pix}");
