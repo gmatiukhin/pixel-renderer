@@ -1,9 +1,14 @@
 use std::marker::PhantomData;
 
-pub trait Line: Iterator {
-    fn new(from: (i32, i32), to: (i32, i32)) -> Self;
+pub type Shape2D = Vec<Pixel>;
+
+pub trait Line: Iterator<Item = Pixel> {
+    fn new(from: (i32, i32), to: (i32, i32)) -> Self
+    where
+        Self: Sized;
 }
 
+#[derive(Clone, Copy)]
 pub enum Pixel {
     Normal { x: i32, y: i32 },
     AntiAliased { x: i32, y: i32, a: u8 },
@@ -47,7 +52,7 @@ impl<L: Line> LineBuilder<L, HasEnd> {
     }
 
     /// Consumes the builder and returns an iterator over line pixels.
-    pub fn end(self) -> impl Iterator<Item = <L as Iterator>::Item> {
+    pub fn end(self) -> impl Iterator<Item = Pixel> {
         self.path
             .clone()
             .into_iter()
@@ -57,7 +62,7 @@ impl<L: Line> LineBuilder<L, HasEnd> {
 
     /// Consumes the builder and returns an iterator over line pixels.
     /// Additionally creates a line between the last point and the first one.
-    pub fn close(mut self) -> impl Iterator<Item = <L as Iterator>::Item> {
+    pub fn close(mut self) -> impl Iterator<Item = Pixel> {
         self.path.push(self.path[0]);
         self.end()
     }

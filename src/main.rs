@@ -1,5 +1,7 @@
-use palette::{blend::Compose, Srgba};
-use pixel_renderer::drawing::{BresenhamLine, LineBuilder, WuLine};
+use pixel_renderer::{
+    drawing::{BresenhamLine, LineBuilder, WuLine},
+    renderer::{Camera, Drawifier, World},
+};
 use pixels::{PixelsBuilder, SurfaceTexture};
 use winit::{
     dpi::LogicalSize,
@@ -30,6 +32,15 @@ fn main() {
             .unwrap()
     };
 
+    let mut world = World {
+        camera: Camera {
+            canvas_width: width,
+            _canvas_height: height,
+        },
+        renderer: Drawifier,
+        objects: vec![],
+    };
+
     if let Err(e) = event_loop.run(move |event, elwt| match event {
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
@@ -48,20 +59,17 @@ fn main() {
             pixels
                 .resize_buffer(size.width, size.height)
                 .expect("Error resizing pixel buffer.");
+            world.camera.canvas_width = size.width;
+            world.camera._canvas_height = size.height;
         }
         Event::WindowEvent {
             event: WindowEvent::RedrawRequested,
             ..
         } => {
             let mut frame: Vec<&mut [u8]> = pixels.frame_mut().chunks_exact_mut(4).collect();
-            for pixel in &mut frame {
-                let rgba = [0, 0, 0, 0xff];
-                pixel.copy_from_slice(&rgba);
-            }
-
             let (w, h): (i32, i32) = window.inner_size().into();
             let o = 20;
-            for p in LineBuilder::<WuLine>::start(0, 0)
+            let l = LineBuilder::<WuLine>::start(0, 0)
                 .to(w - 1, h - 1)
                 .to(w - 1, h / 2)
                 .to(w / 2, 0)
@@ -73,27 +81,10 @@ fn main() {
                         .to(w / 2, o)
                         .close(),
                 )
-            {
-                let (x, y, a) = match p {
-                    pixel_renderer::drawing::Pixel::Normal { x, y } => (x, y, 0xff),
-                    pixel_renderer::drawing::Pixel::AntiAliased { x, y, a } => (x, y, a),
-                };
-                let idx = w as usize * y as usize + x as usize;
-                if idx >= frame.len() {
-                    // Indices go out of bounds only if Wu's line endpoints lie directly in the
-                    // bottom right corner. Hightly unlikely to happen often so we can just ignore
-                    // them.
-                    continue;
-                }
-                let dest = &frame[idx];
-                let dest: Srgba<f32> = Srgba::new(dest[0], dest[1], dest[2], dest[3]).into_format();
-                let src: Srgba<f32> = Srgba::new(0xff_u8, 0xff_u8, 0xff_u8, a).into_format();
-                let dest = src.over(dest);
-                let dest: [u8; 4] = dest.into_format().into();
-                frame[idx].copy_from_slice(&dest);
-            }
-
-            pixels.render().expect("Error drawing pixels.");
+                .collect::<Vec<_>>();
+            world.objects = vec![l];
+            world.render(&mut frame);
+            let _ = pixels.render();
         }
         _ => (),
     }) {
