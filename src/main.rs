@@ -1,6 +1,8 @@
+use glam::{Mat4, Vec4};
 use pixel_renderer::{
+    camera::{Camera, FitStrategy},
     drawing::{LineBuilder, WuLine},
-    renderer::{Camera, Mesh3D, Rasterizer, World},
+    renderer::{Mesh3D, Rasterizer, World},
 };
 use pixels::{PixelsBuilder, SurfaceTexture};
 use winit::{
@@ -16,7 +18,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
         .with_title("Pixel Renderer")
-        .with_resizable(false)
+        // .with_resizable(false)
         .with_inner_size::<LogicalSize<i32>>((width, height).into())
         .build(&event_loop)
         .unwrap();
@@ -92,13 +94,22 @@ fn main() {
 
     let mut world = World {
         camera: Camera {
-            canvas_width: 2,
-            canvas_height: 2,
-            image_width: width,
-            image_height: height,
-            canvas_distance: 1f32,
+            aperture: (35, 24),
+            focal_length: 10f32,
+            near: 0.1f32,
+            far: 10f32,
+            fit_strategy: FitStrategy::Overscan,
+            transform: Mat4 {
+                x_axis: Vec4::X,
+                y_axis: Vec4::Y,
+                z_axis: Vec4::NEG_Z,
+                w_axis: Vec4::ZERO,
+            },
         },
-        renderer: Rasterizer,
+        renderer: Rasterizer {
+            output_width: width,
+            output_height: height,
+        },
         objects: vec![Box::new(_c)],
     };
 
@@ -120,8 +131,8 @@ fn main() {
             pixels
                 .resize_buffer(size.width, size.height)
                 .expect("Error resizing pixel buffer.");
-            world.camera.image_width = size.width;
-            world.camera.image_height = size.height;
+            world.renderer.output_width = size.width;
+            world.renderer.output_height = size.height;
         }
         Event::WindowEvent {
             event: WindowEvent::RedrawRequested,

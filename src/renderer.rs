@@ -1,6 +1,7 @@
 mod drawifier;
 mod renderer_3d;
 
+use crate::camera::Camera;
 pub use drawifier::Drawifier;
 pub use renderer_3d::*;
 
@@ -16,16 +17,9 @@ impl<R: Renderer> World<R> {
     }
 }
 
-pub struct Camera {
-    pub canvas_width: u32,
-    pub canvas_height: u32,
-    pub image_width: u32,
-    pub image_height: u32,
-    pub canvas_distance: f32,
-}
-
 pub trait Renderer {
     type Renderable;
 
     fn render(&self, camera: &Camera, objects: &[Self::Renderable], frame: &mut [&mut [u8]]);
+    fn set_output_dimensions(&mut self, width: u32, height: u32);
 }

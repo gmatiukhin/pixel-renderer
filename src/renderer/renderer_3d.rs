@@ -1,8 +1,10 @@
 use glam::Vec3;
 
-use crate::drawing::{LineBuilder, WuLine};
-
-use super::{Drawifier, Renderer};
+use crate::{
+    camera::Camera,
+    drawing::{LineBuilder, WuLine},
+    renderer::{Drawifier, Renderer},
+};
 
 pub trait Mesh3D {
     /// An array of vertices
@@ -11,17 +13,16 @@ pub trait Mesh3D {
     fn indices(&self) -> Vec<(usize, usize, usize)>;
 }
 
-pub struct Rasterizer;
+pub struct Rasterizer {
+    pub output_width: u32,
+    pub output_height: u32,
+}
 
 impl Renderer for Rasterizer {
     type Renderable = Box<dyn Mesh3D>;
 
-    fn render(
-        &self,
-        camera: &super::Camera,
-        objects: &[Self::Renderable],
-        frame: &mut [&mut [u8]],
-    ) {
+    fn render(&self, camera: &Camera, objects: &[Self::Renderable], frame: &mut [&mut [u8]]) {
+        let canvas = camera.canvas((self.output_width, self.output_height));
         let lines = objects
             .iter()
             .flat_map(|o| {
@@ -31,21 +32,19 @@ impl Renderer for Rasterizer {
                     .map(|v| {
                         println!("Initial points: {}, {}, {}", v.x, v.y, v.z);
                         // Project points onto the canvas
-                        let x_proj = (v.x / (-v.z)) * camera.canvas_distance;
-                        let y_proj = (v.y / (-v.z)) * camera.canvas_distance;
+                        let x_proj = (v.x / (-v.z)) * camera.near;
+                        let y_proj = (v.y / (-v.z)) * camera.near;
                         println!("Canvas projection: {x_proj}, {y_proj}");
 
                         // Remap points into NDC (Normalized Device Coordinates) space.
                         // Basically normalize points to [0; 1]
-                        let x_proj_normal = ((camera.canvas_width as f32 / 2f32) + x_proj)
-                            / camera.canvas_width as f32;
-                        let y_proj_normal = ((camera.canvas_height as f32 / 2f32) + y_proj)
-                            / camera.canvas_height as f32;
+                        let x_proj_normal = ((canvas.width / 2f32) + x_proj) / canvas.width;
+                        let y_proj_normal = ((canvas.height / 2f32) + y_proj) / canvas.height;
                         println!("NDC: {x_proj_normal}, {y_proj_normal}");
 
                         // Project normalized coordinates to raster space
-                        let x_pix = (x_proj_normal * camera.image_width as f32) as i32;
-                        let y_pix = (y_proj_normal * camera.image_height as f32) as i32;
+                        let x_pix = (x_proj_normal * self.output_width as f32) as i32;
+                        let y_pix = (y_proj_normal * self.output_height as f32) as i32;
                         println!("Image space: {x_pix}, {y_pix}");
                         (x_pix, y_pix)
                     })
@@ -72,7 +71,16 @@ impl Renderer for Rasterizer {
                 }
             })
             .collect::<Vec<_>>();
-        let d = Drawifier;
+
+        let d = Drawifier {
+            output_width: self.output_width,
+            output_height: self.output_height,
+        };
         d.render(camera, &lines, frame);
+    }
+
+    fn set_output_dimensions(&mut self, width: u32, height: u32) {
+        self.output_width = width;
+        self.output_height = height;
     }
 }
