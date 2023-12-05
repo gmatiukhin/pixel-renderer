@@ -1,37 +1,20 @@
 use std::marker::PhantomData;
 
-use glam::Vec2;
+use palette::{Srgb, Srgba, WithAlpha};
 
 pub type Shape2D = Vec<Pixel>;
 
 pub trait Line: Iterator<Item = Pixel> {
-    fn new(from: (i32, i32), to: (i32, i32)) -> Self
+    fn new(from: (i32, i32), to: (i32, i32), color: Srgb) -> Self
     where
         Self: Sized;
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Pixel {
-    Normal { x: i32, y: i32 },
-    AntiAliased { x: i32, y: i32, a: u8 },
-}
-
-impl From<(i32, i32)> for Pixel {
-    fn from(value: (i32, i32)) -> Self {
-        Self::Normal {
-            x: value.0,
-            y: value.1,
-        }
-    }
-}
-
-impl From<Vec2> for Pixel {
-    fn from(value: Vec2) -> Self {
-        Self::Normal {
-            x: value.x as i32,
-            y: value.y as i32,
-        }
-    }
+pub struct Pixel {
+    pub(crate) x: i32,
+    pub(crate) y: i32,
+    pub(crate) color: Srgba,
 }
 
 #[derive(Debug)]
@@ -45,6 +28,7 @@ pub struct LineBuilder<Line, Valid = ()> {
     path: Vec<(i32, i32)>,
     skip_line: Vec<(usize, usize)>,
     last_line_beginning: usize,
+    color: Srgb,
     _line: PhantomData<Line>,
     _line_state: PhantomData<Valid>,
 }
@@ -65,9 +49,15 @@ impl<L: Line, S> LineBuilder<L, S> {
             path: vec![],
             skip_line: vec![],
             last_line_beginning: 0,
+            color: Srgb::new(1f32, 1f32, 1f32),
             _line: PhantomData,
             _line_state: PhantomData,
         }
+    }
+
+    pub fn color(mut self, color: Srgb) -> Self {
+        self.color = color;
+        self
     }
 }
 
@@ -78,6 +68,7 @@ impl<L: Line> LineBuilder<L, NoPoints> {
             path: vec![p],
             skip_line: vec![],
             last_line_beginning: 0,
+            color: self.color,
             _line: PhantomData,
             _line_state: PhantomData,
         }
@@ -92,6 +83,7 @@ impl<L: Line> LineBuilder<L, HasStart> {
             path,
             skip_line: self.skip_line,
             last_line_beginning: self.last_line_beginning,
+            color: self.color,
             _line: self._line,
             _line_state: PhantomData,
         }
@@ -128,7 +120,7 @@ impl<L: Line> LineBuilder<L, HasEnd> {
             .enumerate()
             .zip(self.path.into_iter().enumerate().skip(1))
             .filter(move |((i0, _), (i1, _))| !self.skip_line.contains(&(*i0, *i1)))
-            .flat_map(|((_, p0), (_, p1))| L::new(p0, p1))
+            .flat_map(move |((_, p0), (_, p1))| L::new(p0, p1, self.color))
     }
 
     /// Returns a `Shape2D` formed by the line pixels
@@ -147,10 +139,11 @@ pub struct BresenhamLine {
     sy: i32,
     error: i32,
     stop: bool,
+    color: Srgb,
 }
 
 impl Line for BresenhamLine {
-    fn new(from: (i32, i32), to: (i32, i32)) -> Self {
+    fn new(from: (i32, i32), to: (i32, i32), color: Srgb) -> Self {
         let dx = (to.0 - from.0).abs();
         let sx = if from.0 < to.0 { 1 } else { -1 };
         let dy = -(to.1 - from.1).abs();
@@ -165,6 +158,7 @@ impl Line for BresenhamLine {
             sy,
             error,
             stop: false,
+            color,
         }
     }
 }
@@ -177,9 +171,10 @@ impl Iterator for BresenhamLine {
             return None;
         }
 
-        let output = Pixel::Normal {
+        let output = Pixel {
             x: self.p.0,
             y: self.p.1,
+            color: self.color.with_alpha(1f32),
         };
 
         self.stop = self.p == self.to;
@@ -208,10 +203,11 @@ pub struct WuLine {
     gradient: f32,
     is_drawind_pixel_a: bool,
     start_end_buffer: Vec<Pixel>,
+    color: Srgb,
 }
 
 impl Line for WuLine {
-    fn new(from: (i32, i32), to: (i32, i32)) -> Self {
+    fn new(from: (i32, i32), to: (i32, i32), color: Srgb) -> Self {
         let from = (from.0 as f32, from.1 as f32);
         let to = (to.0 as f32, to.1 as f32);
 
@@ -245,28 +241,28 @@ impl Line for WuLine {
 
         let (p1, p2) = if steep {
             (
-                Pixel::AntiAliased {
+                Pixel {
                     x: y_start,
                     y: x_start,
-                    a: alpha_f32_to_u8((1.0 - y.fract()) * x_gap),
+                    color: color.with_alpha((1f32 - y.fract()) * x_gap),
                 },
-                Pixel::AntiAliased {
+                Pixel {
                     x: y_start + 1,
                     y: x_start,
-                    a: alpha_f32_to_u8(y.fract() * x_gap),
+                    color: color.with_alpha(y.fract() * x_gap),
                 },
             )
         } else {
             (
-                Pixel::AntiAliased {
+                Pixel {
                     x: x_start,
                     y: y_start,
-                    a: alpha_f32_to_u8((1.0 - y.fract()) * x_gap),
+                    color: color.with_alpha((1f32 - y.fract()) * x_gap),
                 },
-                Pixel::AntiAliased {
+                Pixel {
                     x: x_start,
                     y: y_start + 1,
-                    a: alpha_f32_to_u8(y.fract() * x_gap),
+                    color: color.with_alpha(y.fract() * x_gap),
                 },
             )
         };
@@ -284,28 +280,28 @@ impl Line for WuLine {
 
         let (p1, p2) = if steep {
             (
-                Pixel::AntiAliased {
+                Pixel {
                     x: y_end,
                     y: x_end,
-                    a: alpha_f32_to_u8((1.0 - y.fract()) * x_gap),
+                    color: color.with_alpha((1f32 - y.fract()) * x_gap),
                 },
-                Pixel::AntiAliased {
+                Pixel {
                     x: y_end + 1,
                     y: x_end,
-                    a: alpha_f32_to_u8(y.fract() * x_gap),
+                    color: color.with_alpha(y.fract() * x_gap),
                 },
             )
         } else {
             (
-                Pixel::AntiAliased {
+                Pixel {
                     x: x_end,
                     y: y_end,
-                    a: alpha_f32_to_u8((1.0 - y.fract()) * x_gap),
+                    color: color.with_alpha((1f32 - y.fract()) * x_gap),
                 },
-                Pixel::AntiAliased {
+                Pixel {
                     x: x_end,
                     y: y_end + 1,
-                    a: alpha_f32_to_u8(y.fract() * x_gap),
+                    color: color.with_alpha(y.fract() * x_gap),
                 },
             )
         };
@@ -320,6 +316,7 @@ impl Line for WuLine {
             gradient,
             is_drawind_pixel_a: true,
             start_end_buffer,
+            color,
         }
     }
 }
@@ -343,16 +340,16 @@ impl Iterator for WuLine {
             let f_opacity = 1f32 - self.inter_y.fract();
 
             if self.steep {
-                Some(Pixel::AntiAliased {
+                Some(Pixel {
                     x: self.inter_y as i32,
                     y: self.x,
-                    a: alpha_f32_to_u8(f_opacity),
+                    color: self.color.with_alpha(f_opacity),
                 })
             } else {
-                Some(Pixel::AntiAliased {
+                Some(Pixel {
                     x: self.x,
                     y: self.inter_y as i32,
-                    a: alpha_f32_to_u8(f_opacity),
+                    color: self.color.with_alpha(f_opacity),
                 })
             }
         } else {
@@ -363,22 +360,18 @@ impl Iterator for WuLine {
             self.inter_y += self.gradient;
 
             if self.steep {
-                Some(Pixel::AntiAliased {
+                Some(Pixel {
                     x: self.inter_y as i32 + 1,
                     y: x,
-                    a: alpha_f32_to_u8(f_opacity),
+                    color: self.color.with_alpha(f_opacity),
                 })
             } else {
-                Some(Pixel::AntiAliased {
+                Some(Pixel {
                     x,
                     y: self.inter_y as i32 + 1,
-                    a: alpha_f32_to_u8(f_opacity),
+                    color: self.color.with_alpha(f_opacity),
                 })
             }
         }
     }
-}
-
-fn alpha_f32_to_u8(f: f32) -> u8 {
-    (if f >= 1f32 { 255f32 } else { f * 256f32 }) as u8
 }
