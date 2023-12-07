@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
 
-use palette::{Srgb, Srgba, WithAlpha};
+use palette::{Srgba, WithAlpha};
 
 pub type Shape2D = Vec<Pixel>;
 
 pub trait Line: Iterator<Item = Pixel> {
-    fn new(from: (i32, i32), to: (i32, i32), color: Srgb) -> Self
+    fn new(from: (i32, i32), to: (i32, i32), color: Srgba) -> Self
     where
         Self: Sized;
 }
@@ -28,7 +28,7 @@ pub struct LineBuilder<Line, Valid = ()> {
     path: Vec<(i32, i32)>,
     skip_line: Vec<(usize, usize)>,
     last_line_beginning: usize,
-    color: Srgb,
+    color: Srgba,
     _line: PhantomData<Line>,
     _line_state: PhantomData<Valid>,
 }
@@ -49,13 +49,13 @@ impl<L: Line, S> LineBuilder<L, S> {
             path: vec![],
             skip_line: vec![],
             last_line_beginning: 0,
-            color: Srgb::new(1f32, 1f32, 1f32),
+            color: Srgba::new(1f32, 1f32, 1f32, 1f32),
             _line: PhantomData,
             _line_state: PhantomData,
         }
     }
 
-    pub fn color(mut self, color: Srgb) -> Self {
+    pub fn color(mut self, color: Srgba) -> Self {
         self.color = color;
         self
     }
@@ -139,11 +139,11 @@ pub struct BresenhamLine {
     sy: i32,
     error: i32,
     stop: bool,
-    color: Srgb,
+    color: Srgba,
 }
 
 impl Line for BresenhamLine {
-    fn new(from: (i32, i32), to: (i32, i32), color: Srgb) -> Self {
+    fn new(from: (i32, i32), to: (i32, i32), color: Srgba) -> Self {
         let dx = (to.0 - from.0).abs();
         let sx = if from.0 < to.0 { 1 } else { -1 };
         let dy = -(to.1 - from.1).abs();
@@ -201,13 +201,12 @@ pub struct WuLine {
     x_end: i32,
     inter_y: f32,
     gradient: f32,
-    is_drawind_pixel_a: bool,
-    start_end_buffer: Vec<Pixel>,
-    color: Srgb,
+    buffer: Vec<Pixel>,
+    color: Srgba,
 }
 
 impl Line for WuLine {
-    fn new(from: (i32, i32), to: (i32, i32), color: Srgb) -> Self {
+    fn new(from: (i32, i32), to: (i32, i32), color: Srgba) -> Self {
         let from = (from.0 as f32, from.1 as f32);
         let to = (to.0 as f32, to.1 as f32);
 
@@ -230,44 +229,17 @@ impl Line for WuLine {
 
         let gradient = if dx == 0f32 { 1f32 } else { dy / dx };
 
-        let mut start_end_buffer = vec![];
+        let mut buffer = vec![];
 
         // Starting point
         let x = from.0.ceil();
         let y = from.1 + gradient * (x - from.0);
         let x_gap = 1f32 - (from.0 + 0.5).fract();
         let x_start = x as i32;
-        let y_start = y as i32;
 
-        let (p1, p2) = if steep {
-            (
-                Pixel {
-                    x: y_start,
-                    y: x_start,
-                    color: color.with_alpha((1f32 - y.fract()) * x_gap),
-                },
-                Pixel {
-                    x: y_start + 1,
-                    y: x_start,
-                    color: color.with_alpha(y.fract() * x_gap),
-                },
-            )
-        } else {
-            (
-                Pixel {
-                    x: x_start,
-                    y: y_start,
-                    color: color.with_alpha((1f32 - y.fract()) * x_gap),
-                },
-                Pixel {
-                    x: x_start,
-                    y: y_start + 1,
-                    color: color.with_alpha(y.fract() * x_gap),
-                },
-            )
-        };
-        start_end_buffer.push(p1);
-        start_end_buffer.push(p2);
+        let (p1, p2) = WuLine::antialiased_pair(steep, x as i32, y, color, x_gap);
+        buffer.push(p1);
+        buffer.push(p2);
 
         let inter_y = y + gradient;
 
@@ -276,37 +248,10 @@ impl Line for WuLine {
         let y = to.1 + gradient * (x - to.0);
         let x_gap = (to.0 + 0.5).fract();
         let x_end = x as i32;
-        let y_end = y as i32;
 
-        let (p1, p2) = if steep {
-            (
-                Pixel {
-                    x: y_end,
-                    y: x_end,
-                    color: color.with_alpha((1f32 - y.fract()) * x_gap),
-                },
-                Pixel {
-                    x: y_end + 1,
-                    y: x_end,
-                    color: color.with_alpha(y.fract() * x_gap),
-                },
-            )
-        } else {
-            (
-                Pixel {
-                    x: x_end,
-                    y: y_end,
-                    color: color.with_alpha((1f32 - y.fract()) * x_gap),
-                },
-                Pixel {
-                    x: x_end,
-                    y: y_end + 1,
-                    color: color.with_alpha(y.fract() * x_gap),
-                },
-            )
-        };
-        start_end_buffer.push(p1);
-        start_end_buffer.push(p2);
+        let (p1, p2) = WuLine::antialiased_pair(steep, x as i32, y, color, x_gap);
+        buffer.push(p1);
+        buffer.push(p2);
 
         Self {
             steep,
@@ -314,10 +259,29 @@ impl Line for WuLine {
             x_end,
             inter_y,
             gradient,
-            is_drawind_pixel_a: true,
-            start_end_buffer,
+            buffer,
             color,
         }
+    }
+}
+
+impl WuLine {
+    fn antialiased_pair(steep: bool, x: i32, y: f32, color: Srgba, x_gap: f32) -> (Pixel, Pixel) {
+        let frac = y.fract();
+        let (x, y) = if steep { (y as i32, x) } else { (x, y as i32) };
+        let (x_inc, y_inc) = if steep { (1, 0) } else { (0, 1) };
+        (
+            Pixel {
+                x,
+                y,
+                color: color.with_alpha((1f32 - frac) * x_gap),
+            },
+            Pixel {
+                x: x + x_inc,
+                y: y + y_inc,
+                color: color.with_alpha(frac * x_gap),
+            },
+        )
     }
 }
 
@@ -326,8 +290,8 @@ impl Iterator for WuLine {
 
     fn next(&mut self) -> Option<Self::Item> {
         // Output buffered endpoints
-        if !self.start_end_buffer.is_empty() {
-            return self.start_end_buffer.pop();
+        if !self.buffer.is_empty() {
+            return self.buffer.pop();
         }
 
         if self.x >= self.x_end {
@@ -335,43 +299,10 @@ impl Iterator for WuLine {
         }
 
         // Main loop
-        if self.is_drawind_pixel_a {
-            self.is_drawind_pixel_a = false;
-            let f_opacity = 1f32 - self.inter_y.fract();
-
-            if self.steep {
-                Some(Pixel {
-                    x: self.inter_y as i32,
-                    y: self.x,
-                    color: self.color.with_alpha(f_opacity),
-                })
-            } else {
-                Some(Pixel {
-                    x: self.x,
-                    y: self.inter_y as i32,
-                    color: self.color.with_alpha(f_opacity),
-                })
-            }
-        } else {
-            self.is_drawind_pixel_a = true;
-            let x = self.x;
-            let f_opacity = self.inter_y.fract();
-            self.x += 1;
-            self.inter_y += self.gradient;
-
-            if self.steep {
-                Some(Pixel {
-                    x: self.inter_y as i32 + 1,
-                    y: x,
-                    color: self.color.with_alpha(f_opacity),
-                })
-            } else {
-                Some(Pixel {
-                    x,
-                    y: self.inter_y as i32 + 1,
-                    color: self.color.with_alpha(f_opacity),
-                })
-            }
-        }
+        let (p1, p2) = WuLine::antialiased_pair(self.steep, self.x, self.inter_y, self.color, 1f32);
+        self.buffer.push(p1);
+        self.x += 1;
+        self.inter_y += self.gradient;
+        Some(p2)
     }
 }
