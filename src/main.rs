@@ -1,7 +1,6 @@
 use glam::{Mat4, Vec4};
 use pixel_renderer::{
     camera::{Camera, FitStrategy},
-    drawing::{LineBuilder, WuLine},
     renderer::{Mesh3D, Rasterizer, World},
 };
 use pixels::{PixelsBuilder, SurfaceTexture};
@@ -18,7 +17,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
         .with_title("Pixel Renderer")
-        // .with_resizable(false)
+        .with_resizable(false)
         .with_inner_size::<LogicalSize<i32>>((width, height).into())
         .build(&event_loop)
         .unwrap();
@@ -78,20 +77,6 @@ fn main() {
 
     let _c = Cube;
 
-    let _l = LineBuilder::<WuLine>::new()
-        .from((100, 100))
-        .to((200, 200))
-        .to((100, 200))
-        .close()
-        .from((300, 100))
-        .to((400, 200))
-        .to((300, 200))
-        .from((300, 300))
-        .to((400, 400))
-        .to((300, 400))
-        .close()
-        .shape();
-
     let mut world = World {
         camera: Camera {
             aperture: (35, 24),
@@ -102,8 +87,8 @@ fn main() {
             transform: Mat4 {
                 x_axis: Vec4::X,
                 y_axis: Vec4::Y,
-                z_axis: Vec4::NEG_Z,
-                w_axis: Vec4::ZERO,
+                z_axis: Vec4::Z,
+                w_axis: Vec4::W,
             },
         },
         renderer: Rasterizer {

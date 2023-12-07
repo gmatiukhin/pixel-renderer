@@ -1,10 +1,10 @@
-use glam::Vec3;
-
 use crate::{
     camera::Camera,
     drawing::{LineBuilder, WuLine},
     renderer::{Drawifier, Renderer},
 };
+use glam::{Mat4, Vec3, Vec4};
+use palette::Srgba;
 
 pub trait Mesh3D {
     /// An array of vertices
@@ -23,6 +23,15 @@ impl Renderer for Rasterizer {
 
     fn render(&self, camera: &Camera, objects: &[Self::Renderable], frame: &mut [&mut [u8]]) {
         let canvas = camera.canvas((self.output_width, self.output_height));
+        let world_to_camera = camera.transform.inverse();
+
+        let perspective = Mat4::from_cols(
+            Vec4::X * 2f32 * camera.near / canvas.width,
+            Vec4::Y * 2f32 * camera.near / canvas.height,
+            Vec4::NEG_Z * (camera.far + camera.near) / (camera.far - camera.near) + Vec4::NEG_W,
+            Vec4::NEG_Z * 2f32 * camera.far * camera.near / (camera.far - camera.near),
+        );
+
         let lines = objects
             .iter()
             .flat_map(|o| {
@@ -30,45 +39,53 @@ impl Renderer for Rasterizer {
                     .vertices()
                     .iter()
                     .map(|v| {
-                        println!("Initial points: {}, {}, {}", v.x, v.y, v.z);
-                        // Project points onto the canvas
-                        let x_proj = (v.x / (-v.z)) * camera.near;
-                        let y_proj = (v.y / (-v.z)) * camera.near;
-                        println!("Canvas projection: {x_proj}, {y_proj}");
+                        println!("============================================");
+                        println!("World space: {v}");
 
-                        // Remap points into NDC (Normalized Device Coordinates) space.
-                        // Basically normalize points to [0; 1]
-                        let x_proj_normal = ((canvas.width / 2f32) + x_proj) / canvas.width;
-                        let y_proj_normal = ((canvas.height / 2f32) + y_proj) / canvas.height;
-                        println!("NDC: {x_proj_normal}, {y_proj_normal}");
+                        // // Project points onto the canvas
+                        // let x_screen = (v.x / (-v.z)) * camera.near;
+                        // let y_screen = (v.y / (-v.z)) * camera.near;
+                        // println!("Screen space: {x_screen}, {y_screen}");
+                        // // Remap points into NDC (Normalized Device Coordinates) space [-1; 1].
+                        // let x_ndc = (2f32 * v.x) / canvas.width;
+                        // let y_ndc = (2f32 * v.y) / canvas.height;
+                        // println!("NDC: {x_ndc}, {y_ndc}");
+
+                        // Important: point is now in homogenous coordinates
+                        let v = world_to_camera * Vec4::from((*v, 1f32));
+                        println!("Camera space: {v}");
+
+                        // Apply projection, this also squishes z into [0; 1]
+                        let v = perspective * v;
+                        println!("Projected: {v}");
+
+                        // Transform back from homogenous coordinates
+                        let v = Vec3::new(v.x / v.w, v.y / v.w, v.z / v.w);
+                        println!("Non-homogenous: {v}");
 
                         // Project normalized coordinates to raster space
-                        let x_pix = (x_proj_normal * self.output_width as f32) as i32;
-                        let y_pix = (y_proj_normal * self.output_height as f32) as i32;
-                        println!("Image space: {x_pix}, {y_pix}");
-                        (x_pix, y_pix)
+                        let x_raster = ((v.x + 1f32) / 2f32 * self.output_width as f32) as i32;
+                        // Y is down in raster space but up in NDC, so invert it
+                        let y_raster = ((1f32 - v.y) / 2f32 * self.output_height as f32) as i32;
+                        println!("Raster space: {x_raster}, {y_raster}");
+
+                        // Keep z coordinate for z-buffering
+                        (x_raster, y_raster, v.z)
                     })
                     .collect::<Vec<_>>();
-                let mut index_ordered_vertices = vec![];
-                for (v1, v2, v3) in o.indices() {
-                    index_ordered_vertices.push(points[v1]);
-                    index_ordered_vertices.push(points[v2]);
-                    index_ordered_vertices.push(points[v3]);
-                }
 
-                if index_ordered_vertices.len() >= 3 {
-                    let mut line_builder = LineBuilder::<WuLine>::new()
-                        .from(index_ordered_vertices[0])
-                        .to(index_ordered_vertices[1])
-                        .to(index_ordered_vertices[2])
-                        .close();
-                    for t in index_ordered_vertices.chunks_exact(3).skip(1) {
-                        line_builder = line_builder.from(t[0]).to(t[1]).to(t[2]).close();
-                    }
-                    Some(line_builder.end().collect::<Vec<_>>())
-                } else {
-                    None
-                }
+                o.indices()
+                    .iter()
+                    .map(|t| {
+                        LineBuilder::<WuLine>::new()
+                            .color(Srgba::new(0.7f32, 0.5f32, 0.6f32, 1f32))
+                            .from((points[t.0].0, points[t.0].1))
+                            .to((points[t.1].0, points[t.1].1))
+                            .to((points[t.2].0, points[t.2].1))
+                            .close()
+                            .shape()
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
 
