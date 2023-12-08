@@ -108,7 +108,7 @@ impl Renderer for Rasterizer {
                                     let idx = y as usize * self.output_width as usize + x as usize;
                                     if z < depth_buffer[idx] {
                                         depth_buffer[idx] = z;
-                                        let c = Srgba::new(w0, w1, w2, 1f32);
+                                        let c = Srgba::new(w0 * z, w1 * z, w2 * z, 1f32);
                                         Some(Shape2D::Pixel(Pixel {
                                             x: x as i32,
                                             y: y as i32,
