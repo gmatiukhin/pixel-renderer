@@ -1,6 +1,6 @@
 use crate::{
     camera::Camera,
-    drawing::{Pixel, Shape2D},
+    drawing::{LineBuilder, Pixel, Shape2D, WuLine},
     renderer::{Drawifier, Renderer},
 };
 use glam::{Mat4, Vec3, Vec4};
@@ -33,7 +33,7 @@ impl Renderer for Rasterizer {
             Vec4::NEG_Z * 2f32 * camera.far * camera.near / (camera.far - camera.near),
         );
 
-        let lines = objects
+        let shapes = objects
             .iter()
             .flat_map(|o| {
                 let points = o
@@ -75,7 +75,7 @@ impl Renderer for Rasterizer {
                     })
                     .collect::<Vec<_>>();
 
-                (0..self.output_width)
+                let planes = (0..self.output_width)
                     .cartesian_product(0..self.output_height)
                     .cartesian_product(o.indices())
                     .flat_map(|((x, y), t)| {
@@ -113,24 +113,33 @@ impl Renderer for Rasterizer {
                         } else {
                             None
                         }
-
-                        // LineBuilder::<WuLine>::new()
-                        //     .color(Srgba::new(0.7f32, 0.5f32, 0.6f32, 1f32))
-                        //     .from((points[t.0].0, points[t.0].1))
-                        //     .to((points[t.1].0, points[t.1].1))
-                        //     .to((points[t.2].0, points[t.2].1))
-                        //     .close()
-                        //     .shape()
                     })
-                    .collect::<Vec<_>>()
+                    .collect_vec();
+
+                let lines = o
+                    .indices()
+                    .iter()
+                    .map(|t| {
+                        LineBuilder::<WuLine>::new()
+                            .color(Srgba::new(0.7f32, 0.5f32, 0.6f32, 1f32))
+                            .from((points[t.0].0, points[t.0].1))
+                            .to((points[t.1].0, points[t.1].1))
+                            .to((points[t.2].0, points[t.2].1))
+                            .close()
+                            .shape()
+                    })
+                    .collect_vec();
+
+                [planes, lines]
             })
-            .collect::<Vec<_>>();
+            .flatten()
+            .collect_vec();
 
         let d = Drawifier {
             output_width: self.output_width,
             output_height: self.output_height,
         };
-        d.render(camera, &lines, frame);
+        d.render(camera, &shapes, frame);
     }
 
     fn set_output_dimensions(&mut self, width: u32, height: u32) {

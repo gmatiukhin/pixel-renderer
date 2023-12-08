@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use itertools::Itertools;
 use palette::{Srgba, WithAlpha};
 
 // pub type Shape2D = Vec<Pixel>;
@@ -157,7 +158,7 @@ impl<L: Line> LineBuilder<L, HasEnd> {
 
     /// Returns a `Shape2D` formed by the line pixels
     pub fn shape(self) -> Shape2D {
-        self.end().collect()
+        Shape2D::Complex(self.end().collect_vec())
     }
 }
 
