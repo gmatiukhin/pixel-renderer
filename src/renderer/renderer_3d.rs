@@ -75,44 +75,37 @@ impl Renderer for Rasterizer {
                     })
                     .collect::<Vec<_>>();
 
-                let planes = (0..self.output_width)
-                    .cartesian_product(0..self.output_height)
-                    .cartesian_product(o.indices())
-                    .flat_map(|((x, y), t)| {
-                        let area = edge_function(
-                            (points[t.0].0, points[t.0].1),
-                            (points[t.1].0, points[t.1].1),
-                            (points[t.2].0, points[t.2].1),
-                        ) as f32;
-                        let w0 = edge_function(
-                            (points[t.1].0, points[t.1].1),
-                            (points[t.2].0, points[t.2].1),
-                            (x as i32, y as i32),
-                        );
-                        let w1 = edge_function(
-                            (points[t.2].0, points[t.2].1),
-                            (points[t.0].0, points[t.0].1),
-                            (x as i32, y as i32),
-                        );
-                        let w2 = edge_function(
-                            (points[t.0].0, points[t.0].1),
-                            (points[t.1].0, points[t.1].1),
-                            (x as i32, y as i32),
-                        );
+                let planes = o
+                    .indices()
+                    .iter()
+                    .flat_map(|t| {
+                        let p0 = points[t.0];
+                        let p1 = points[t.1];
+                        let p2 = points[t.2];
 
-                        if w0 >= 0 && w1 >= 0 && w2 >= 0 {
-                            let w0 = w0 as f32 / area;
-                            let w1 = w1 as f32 / area;
-                            let w2 = w2 as f32 / area;
-                            let c = Srgba::new(w0, w1, w2, 1f32);
-                            Some(Shape2D::Pixel(Pixel {
-                                x: x as i32,
-                                y: y as i32,
-                                color: c,
-                            }))
-                        } else {
-                            None
-                        }
+                        let min = (p0.0.min(p1.0.min(p2.0)), p0.1.min(p1.1.min(p2.1)));
+
+                        let max = (p0.0.max(p1.0.max(p2.0)), p0.1.max(p1.1.max(p2.1)));
+
+                        (min.0..max.0)
+                            .cartesian_product(min.1..max.1)
+                            .flat_map(|(x, y)| {
+                                let area =
+                                    edge_function((p0.0, p0.1), (p1.0, p1.1), (p2.0, p2.1)) as f32;
+                                let w0 = edge_function((p1.0, p1.1), (p2.0, p2.1), (x, y));
+                                let w1 = edge_function((p2.0, p2.1), (p0.0, p0.1), (x, y));
+                                let w2 = edge_function((p0.0, p0.1), (p1.0, p1.1), (x, y));
+                                if w0 >= 0 && w1 >= 0 && w2 >= 0 {
+                                    let w0 = w0 as f32 / area;
+                                    let w1 = w1 as f32 / area;
+                                    let w2 = w2 as f32 / area;
+                                    let c = Srgba::new(w0, w1, w2, 1f32);
+                                    Some(Shape2D::Pixel(Pixel { x, y, color: c }))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect_vec()
                     })
                     .collect_vec();
 
