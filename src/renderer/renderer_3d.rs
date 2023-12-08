@@ -33,6 +33,8 @@ impl Renderer for Rasterizer {
             Vec4::NEG_Z * 2f32 * camera.far * camera.near / (camera.far - camera.near),
         );
 
+        let mut depth_buffer =
+            vec![f32::INFINITY; self.output_width as usize * self.output_height as usize];
         let shapes = objects
             .iter()
             .flat_map(|o| {
@@ -71,7 +73,7 @@ impl Renderer for Rasterizer {
                         println!("Raster space: {x_raster}, {y_raster}");
 
                         // Keep z coordinate for z-buffering
-                        (x_raster, y_raster, v.z)
+                        Vec3::new(x_raster as f32, y_raster as f32, v.z)
                     })
                     .collect::<Vec<_>>();
 
@@ -83,24 +85,38 @@ impl Renderer for Rasterizer {
                         let p1 = points[t.1];
                         let p2 = points[t.2];
 
-                        let min = (p0.0.min(p1.0.min(p2.0)), p0.1.min(p1.1.min(p2.1)));
+                        let min = (p0.x.min(p1.x.min(p2.x)), p0.y.min(p1.y.min(p2.y)));
 
-                        let max = (p0.0.max(p1.0.max(p2.0)), p0.1.max(p1.1.max(p2.1)));
+                        let max = (p0.x.max(p1.x.max(p2.x)), p0.y.max(p1.y.max(p2.y)));
 
-                        (min.0..max.0)
-                            .cartesian_product(min.1..max.1)
+                        (min.0 as i32..max.0 as i32)
+                            .cartesian_product(min.1 as i32..max.1 as i32)
                             .flat_map(|(x, y)| {
-                                let area =
-                                    edge_function((p0.0, p0.1), (p1.0, p1.1), (p2.0, p2.1)) as f32;
-                                let w0 = edge_function((p1.0, p1.1), (p2.0, p2.1), (x, y));
-                                let w1 = edge_function((p2.0, p2.1), (p0.0, p0.1), (x, y));
-                                let w2 = edge_function((p0.0, p0.1), (p1.0, p1.1), (x, y));
-                                if w0 >= 0 && w1 >= 0 && w2 >= 0 {
-                                    let w0 = w0 as f32 / area;
-                                    let w1 = w1 as f32 / area;
-                                    let w2 = w2 as f32 / area;
-                                    let c = Srgba::new(w0, w1, w2, 1f32);
-                                    Some(Shape2D::Pixel(Pixel { x, y, color: c }))
+                                let (x, y) = (x as f32, y as f32);
+                                let area = edge_function((p0.x, p0.y), (p1.x, p1.y), (p2.x, p2.y));
+                                let w0 = edge_function((p1.x, p1.y), (p2.x, p2.y), (x, y));
+                                let w1 = edge_function((p2.x, p2.y), (p0.x, p0.y), (x, y));
+                                let w2 = edge_function((p0.x, p0.y), (p1.x, p1.y), (x, y));
+                                if w0 >= 0f32 && w1 >= 0f32 && w2 >= 0f32 {
+                                    // Pixel does overlap the triangle
+                                    let w0 = w0 / area;
+                                    let w1 = w1 / area;
+                                    let w2 = w2 / area;
+
+                                    let z = 1f32
+                                        / (1f32 / p0.z * w0 + 1f32 / p1.z * w1 + 1f32 / p2.z * w2);
+                                    let idx = y as usize * self.output_width as usize + x as usize;
+                                    if z < depth_buffer[idx] {
+                                        depth_buffer[idx] = z;
+                                        let c = Srgba::new(w0, w1, w2, 1f32);
+                                        Some(Shape2D::Pixel(Pixel {
+                                            x: x as i32,
+                                            y: y as i32,
+                                            color: c,
+                                        }))
+                                    } else {
+                                        None
+                                    }
                                 } else {
                                     None
                                 }
@@ -115,9 +131,9 @@ impl Renderer for Rasterizer {
                     .map(|t| {
                         LineBuilder::<WuLine>::new()
                             .color(Srgba::new(0.7f32, 0.5f32, 0.6f32, 1f32))
-                            .from((points[t.0].0, points[t.0].1))
-                            .to((points[t.1].0, points[t.1].1))
-                            .to((points[t.2].0, points[t.2].1))
+                            .from((points[t.0].x as i32, points[t.0].y as i32))
+                            .to((points[t.1].x as i32, points[t.1].y as i32))
+                            .to((points[t.2].x as i32, points[t.2].y as i32))
                             .close()
                             .shape()
                     })
@@ -141,7 +157,7 @@ impl Renderer for Rasterizer {
     }
 }
 
-fn edge_function(a: (i32, i32), b: (i32, i32), p: (i32, i32)) -> i32 {
+fn edge_function(a: (f32, f32), b: (f32, f32), p: (f32, f32)) -> f32 {
     // TODO: there should be no `-` sign
     -((p.0 - a.0) * (b.1 - a.1) - (p.1 - a.1) * (b.0 - a.0))
 }
