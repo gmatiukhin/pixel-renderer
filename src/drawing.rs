@@ -2,7 +2,39 @@ use std::marker::PhantomData;
 
 use palette::{Srgba, WithAlpha};
 
-pub type Shape2D = Vec<Pixel>;
+// pub type Shape2D = Vec<Pixel>;
+#[derive(Debug, Clone)]
+pub enum Shape2D {
+    Pixel(Pixel),
+    Complex(Vec<Pixel>),
+}
+
+impl IntoIterator for Shape2D {
+    type Item = Pixel;
+
+    type IntoIter = Box<dyn Iterator<Item = Self::Item>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            Shape2D::Pixel(p) => Box::new(std::iter::once(p)),
+            Shape2D::Complex(v) => Box::new(v.into_iter()),
+        }
+    }
+}
+
+impl FromIterator<Pixel> for Shape2D {
+    fn from_iter<T: IntoIterator<Item = Pixel>>(iter: T) -> Self {
+        let mut c = vec![];
+        for e in iter {
+            c.push(e);
+        }
+        if c.len() == 1 {
+            Self::Pixel(c[0])
+        } else {
+            Self::Complex(c)
+        }
+    }
+}
 
 pub trait Line: Iterator<Item = Pixel> {
     fn new(from: (i32, i32), to: (i32, i32), color: Srgba) -> Self

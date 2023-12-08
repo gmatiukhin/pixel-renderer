@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 glam = "0.24.2"
+itertools = "0.12.0"
 palette = "0.7.3"
 pixels = "0.13.0"
 radians = "0.3.1"

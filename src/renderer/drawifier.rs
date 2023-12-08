@@ -23,7 +23,7 @@ impl Renderer for Drawifier {
             pixel.copy_from_slice(&rgba);
         }
 
-        for p in objects.iter().flatten() {
+        for p in objects.iter().flat_map(|e| e.clone().into_iter()) {
             // Skip unrenderable pixels
             if !(0..self.output_width as i32).contains(&p.x)
                 || !(0..self.output_height as i32).contains(&p.y)

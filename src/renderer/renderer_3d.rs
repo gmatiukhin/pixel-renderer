@@ -1,9 +1,10 @@
 use crate::{
     camera::Camera,
-    drawing::{LineBuilder, WuLine},
+    drawing::{Pixel, Shape2D},
     renderer::{Drawifier, Renderer},
 };
 use glam::{Mat4, Vec3, Vec4};
+use itertools::Itertools;
 use palette::Srgba;
 
 pub trait Mesh3D {
@@ -74,16 +75,52 @@ impl Renderer for Rasterizer {
                     })
                     .collect::<Vec<_>>();
 
-                o.indices()
-                    .iter()
-                    .map(|t| {
-                        LineBuilder::<WuLine>::new()
-                            .color(Srgba::new(0.7f32, 0.5f32, 0.6f32, 1f32))
-                            .from((points[t.0].0, points[t.0].1))
-                            .to((points[t.1].0, points[t.1].1))
-                            .to((points[t.2].0, points[t.2].1))
-                            .close()
-                            .shape()
+                (0..self.output_width)
+                    .cartesian_product(0..self.output_height)
+                    .cartesian_product(o.indices())
+                    .flat_map(|((x, y), t)| {
+                        let area = edge_function(
+                            (points[t.0].0, points[t.0].1),
+                            (points[t.1].0, points[t.1].1),
+                            (points[t.2].0, points[t.2].1),
+                        ) as f32;
+                        let w0 = edge_function(
+                            (points[t.1].0, points[t.1].1),
+                            (points[t.2].0, points[t.2].1),
+                            (x as i32, y as i32),
+                        );
+                        let w1 = edge_function(
+                            (points[t.2].0, points[t.2].1),
+                            (points[t.0].0, points[t.0].1),
+                            (x as i32, y as i32),
+                        );
+                        let w2 = edge_function(
+                            (points[t.0].0, points[t.0].1),
+                            (points[t.1].0, points[t.1].1),
+                            (x as i32, y as i32),
+                        );
+
+                        if w0 >= 0 && w1 >= 0 && w2 >= 0 {
+                            let w0 = w0 as f32 / area;
+                            let w1 = w1 as f32 / area;
+                            let w2 = w2 as f32 / area;
+                            let c = Srgba::new(w0, w1, w2, 1f32);
+                            Some(Shape2D::Pixel(Pixel {
+                                x: x as i32,
+                                y: y as i32,
+                                color: c,
+                            }))
+                        } else {
+                            None
+                        }
+
+                        // LineBuilder::<WuLine>::new()
+                        //     .color(Srgba::new(0.7f32, 0.5f32, 0.6f32, 1f32))
+                        //     .from((points[t.0].0, points[t.0].1))
+                        //     .to((points[t.1].0, points[t.1].1))
+                        //     .to((points[t.2].0, points[t.2].1))
+                        //     .close()
+                        //     .shape()
                     })
                     .collect::<Vec<_>>()
             })
@@ -100,4 +137,9 @@ impl Renderer for Rasterizer {
         self.output_width = width;
         self.output_height = height;
     }
+}
+
+fn edge_function(a: (i32, i32), b: (i32, i32), p: (i32, i32)) -> i32 {
+    // TODO: there should be no `-` sign
+    -((p.0 - a.0) * (b.1 - a.1) - (p.1 - a.1) * (b.0 - a.0))
 }
