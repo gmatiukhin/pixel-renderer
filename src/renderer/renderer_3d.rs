@@ -5,13 +5,21 @@ use crate::{
 };
 use glam::{Mat4, Vec3, Vec4};
 use itertools::Itertools;
-use palette::Srgba;
+use palette::{Srgb, Srgba};
+
+#[derive(Debug, Clone, Copy)]
+pub struct VertexAttribute {
+    pub color: Srgb,
+}
 
 pub trait Mesh3D {
     /// An array of vertices
     fn vertices(&self) -> Vec<Vec3>;
     /// An array of triangles, formed by vertices with indices in tuples
     fn indices(&self) -> Vec<(usize, usize, usize)>;
+    /// An array of vertex attributes.
+    /// Each element corresponds to a vertex in `vertices()`
+    fn attributes(&self) -> Vec<VertexAttribute>;
 }
 
 pub struct Rasterizer {
@@ -64,7 +72,7 @@ impl Renderer for Rasterizer {
 
                         // Transform back from homogenous coordinates
                         let v = Vec3::new(v.x / v.w, v.y / v.w, v.z / v.w);
-                        println!("Non-homogenous: {v}");
+                        println!("Screen space: {v}");
 
                         // Project normalized coordinates to raster space
                         let x_raster = ((v.x + 1f32) / 2f32 * self.output_width as f32) as i32;
@@ -77,6 +85,8 @@ impl Renderer for Rasterizer {
                     })
                     .collect::<Vec<_>>();
 
+                let attributes = o.attributes();
+
                 let planes = o
                     .indices()
                     .iter()
@@ -84,6 +94,10 @@ impl Renderer for Rasterizer {
                         let p0 = points[t.0];
                         let p1 = points[t.1];
                         let p2 = points[t.2];
+
+                        let a0 = attributes[t.0];
+                        let a1 = attributes[t.1];
+                        let a2 = attributes[t.2];
 
                         let min = (p0.x.min(p1.x.min(p2.x)), p0.y.min(p1.y.min(p2.y)));
 
@@ -108,7 +122,17 @@ impl Renderer for Rasterizer {
                                     let idx = y as usize * self.output_width as usize + x as usize;
                                     if z < depth_buffer[idx] {
                                         depth_buffer[idx] = z;
-                                        let c = Srgba::new(w0 * z, w1 * z, w2 * z, 1f32);
+                                        let c0 = a0.color;
+                                        let c1 = a1.color;
+                                        let c2 = a2.color;
+
+                                        let r = w0 * c0.red + w1 * c1.red + w2 * c2.red;
+                                        let g = w0 * c0.green + w1 * c1.green + w2 * c2.green;
+                                        let b = w0 * c0.blue + w1 * c1.blue + w2 * c2.blue;
+
+                                        // Multiply by z to achieve perspective correct
+                                        // interpolation of color attributes.
+                                        let c = Srgba::new(r * z, g * z, b * z, 1f32);
                                         Some(Shape2D::Pixel(Pixel {
                                             x: x as i32,
                                             y: y as i32,

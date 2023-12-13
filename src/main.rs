@@ -1,7 +1,8 @@
 use glam::{Mat4, Vec4};
+use palette::Srgb;
 use pixel_renderer::{
     camera::{Camera, FitStrategy},
-    renderer::{Mesh3D, Rasterizer, World},
+    renderer::{Mesh3D, Rasterizer, VertexAttribute, World},
 };
 use pixels::{PixelsBuilder, SurfaceTexture};
 use winit::{
@@ -71,6 +72,35 @@ fn main() {
                 // Far
                 (0, 2, 4),
                 (2, 6, 4),
+            ]
+        }
+
+        fn attributes(&self) -> Vec<VertexAttribute> {
+            vec![
+                VertexAttribute {
+                    color: Srgb::new(1f32, 1f32, 1f32),
+                },
+                VertexAttribute {
+                    color: Srgb::new(1f32, 0.5f32, 1f32),
+                },
+                VertexAttribute {
+                    color: Srgb::new(0f32, 1f32, 0.5f32),
+                },
+                VertexAttribute {
+                    color: Srgb::new(0.5f32, 0f32, 1f32),
+                },
+                VertexAttribute {
+                    color: Srgb::new(1f32, 0f32, 1f32),
+                },
+                VertexAttribute {
+                    color: Srgb::new(0f32, 1f32, 1f32),
+                },
+                VertexAttribute {
+                    color: Srgb::new(0f32, 0f32, 0f32),
+                },
+                VertexAttribute {
+                    color: Srgb::new(1f32, 0f32, 0f32),
+                },
             ]
         }
     }
