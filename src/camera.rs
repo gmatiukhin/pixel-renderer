@@ -21,6 +21,21 @@ pub enum FitStrategy {
     Overscan,
 }
 
+impl Default for Camera {
+    fn default() -> Self {
+        Self {
+            aperture: (35, 24),
+            focal_length: 10f32,
+            near: 0.1f32,
+            far: 10f32,
+            fit_strategy: FitStrategy::Overscan,
+            position: Vec3::ZERO,
+            yaw: Rad32::new(-90f32),
+            pitch: Rad32::new(0f32),
+        }
+    }
+}
+
 impl Camera {
     pub fn canvas(&self, output_dimensions: (u32, u32)) -> Canvas {
         Canvas::from_camera_parameters(
