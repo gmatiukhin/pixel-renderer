@@ -32,7 +32,7 @@ impl Renderer for Rasterizer {
 
     fn render(&self, camera: &Camera, objects: &[Self::Renderable], frame: &mut [&mut [u8]]) {
         let canvas = camera.canvas((self.output_width, self.output_height));
-        let world_to_camera = camera.transform.inverse();
+        let world_to_camera = camera.world_to_camera();
 
         let perspective = Mat4::from_cols(
             Vec4::X * 2f32 * camera.near / canvas.width,
@@ -50,9 +50,8 @@ impl Renderer for Rasterizer {
                     .vertices()
                     .iter()
                     .map(|v| {
-                        println!("============================================");
-                        println!("World space: {v}");
-
+                        // Note: this is old version of the uncommented code below
+                        // this does not use matrices but reaches the same result
                         // // Project points onto the canvas
                         // let x_screen = (v.x / (-v.z)) * camera.near;
                         // let y_screen = (v.y / (-v.z)) * camera.near;
@@ -64,22 +63,14 @@ impl Renderer for Rasterizer {
 
                         // Important: point is now in homogenous coordinates
                         let v = world_to_camera * Vec4::from((*v, 1f32));
-                        println!("Camera space: {v}");
-
                         // Apply projection, this also squishes z into [0; 1]
                         let v = perspective * v;
-                        println!("Projected: {v}");
-
                         // Transform back from homogenous coordinates
                         let v = Vec3::new(v.x / v.w, v.y / v.w, v.z / v.w);
-                        println!("Screen space: {v}");
-
                         // Project normalized coordinates to raster space
                         let x_raster = ((v.x + 1f32) / 2f32 * self.output_width as f32) as i32;
                         // Y is down in raster space but up in NDC, so invert it
                         let y_raster = ((1f32 - v.y) / 2f32 * self.output_height as f32) as i32;
-                        println!("Raster space: {x_raster}, {y_raster}");
-
                         // Keep z coordinate for z-buffering
                         Vec3::new(x_raster as f32, y_raster as f32, v.z)
                     })
@@ -105,6 +96,9 @@ impl Renderer for Rasterizer {
 
                         (min.0 as i32..max.0 as i32)
                             .cartesian_product(min.1 as i32..max.1 as i32)
+                            .filter(|(x, y)| {
+                                (*x as u32) < self.output_width && (*y as u32) < self.output_height
+                            })
                             .flat_map(|(x, y)| {
                                 let (x, y) = (x as f32, y as f32);
                                 let area = edge_function((p0.x, p0.y), (p1.x, p1.y), (p2.x, p2.y));

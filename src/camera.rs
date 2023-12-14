@@ -1,4 +1,5 @@
-use glam::Mat4;
+use glam::{Mat4, Vec3};
+use radians::Rad32;
 
 #[allow(clippy::manual_non_exhaustive)]
 #[derive(Debug, Clone, Copy)]
@@ -8,8 +9,10 @@ pub struct Camera {
     pub near: f32,
     pub far: f32,
     pub fit_strategy: FitStrategy,
-    /// Camera's location and rotation in the world
-    pub transform: Mat4,
+
+    pub position: Vec3,
+    pub yaw: Rad32,
+    pub pitch: Rad32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -27,6 +30,25 @@ impl Camera {
             self.fit_strategy,
             output_dimensions,
         )
+    }
+
+    pub fn world_to_camera(&self) -> Mat4 {
+        let (yaw_sin, yaw_cos) = self.yaw.sin_cos();
+        let (pitch_sin, pitch_cos) = self.pitch.sin_cos();
+        Mat4::look_to_rh(
+            self.position,
+            Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos).normalize(),
+            Vec3::Y,
+        )
+    }
+
+    pub fn forward(&self) -> Vec3 {
+        let (yaw_sin, yaw_cos) = self.yaw.sin_cos();
+        Vec3::new(yaw_cos, 0f32, yaw_sin).normalize()
+    }
+
+    pub fn right(&self) -> Vec3 {
+        self.forward().cross(Vec3::Y).normalize()
     }
 }
 
