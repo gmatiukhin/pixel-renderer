@@ -25,6 +25,8 @@ pub trait Mesh3D {
 pub struct Rasterizer {
     pub output_width: u32,
     pub output_height: u32,
+    pub show_wireframe: bool,
+    pub show_polygons: bool,
 }
 
 impl Renderer for Rasterizer {
@@ -78,84 +80,95 @@ impl Renderer for Rasterizer {
 
                 let attributes = o.attributes();
 
-                let planes = o
-                    .indices()
-                    .iter()
-                    .flat_map(|t| {
-                        let p0 = points[t.0];
-                        let p1 = points[t.1];
-                        let p2 = points[t.2];
+                let planes = if self.show_polygons {
+                    o.indices()
+                        .iter()
+                        .flat_map(|t| {
+                            let p0 = points[t.0];
+                            let p1 = points[t.1];
+                            let p2 = points[t.2];
 
-                        let a0 = attributes[t.0];
-                        let a1 = attributes[t.1];
-                        let a2 = attributes[t.2];
+                            let a0 = attributes[t.0];
+                            let a1 = attributes[t.1];
+                            let a2 = attributes[t.2];
 
-                        let min = (p0.x.min(p1.x.min(p2.x)), p0.y.min(p1.y.min(p2.y)));
+                            let min = (p0.x.min(p1.x.min(p2.x)), p0.y.min(p1.y.min(p2.y)));
 
-                        let max = (p0.x.max(p1.x.max(p2.x)), p0.y.max(p1.y.max(p2.y)));
+                            let max = (p0.x.max(p1.x.max(p2.x)), p0.y.max(p1.y.max(p2.y)));
 
-                        (min.0 as i32..max.0 as i32)
-                            .cartesian_product(min.1 as i32..max.1 as i32)
-                            .filter(|(x, y)| {
-                                (*x as u32) < self.output_width && (*y as u32) < self.output_height
-                            })
-                            .flat_map(|(x, y)| {
-                                let (x, y) = (x as f32, y as f32);
-                                let area = edge_function((p0.x, p0.y), (p1.x, p1.y), (p2.x, p2.y));
-                                let w0 = edge_function((p1.x, p1.y), (p2.x, p2.y), (x, y));
-                                let w1 = edge_function((p2.x, p2.y), (p0.x, p0.y), (x, y));
-                                let w2 = edge_function((p0.x, p0.y), (p1.x, p1.y), (x, y));
-                                if w0 >= 0f32 && w1 >= 0f32 && w2 >= 0f32 {
-                                    // Pixel does overlap the triangle
-                                    let w0 = w0 / area;
-                                    let w1 = w1 / area;
-                                    let w2 = w2 / area;
+                            (min.0 as i32..max.0 as i32)
+                                .cartesian_product(min.1 as i32..max.1 as i32)
+                                .filter(|(x, y)| {
+                                    (*x as u32) < self.output_width
+                                        && (*y as u32) < self.output_height
+                                })
+                                .flat_map(|(x, y)| {
+                                    let (x, y) = (x as f32, y as f32);
+                                    let area =
+                                        edge_function((p0.x, p0.y), (p1.x, p1.y), (p2.x, p2.y));
+                                    let w0 = edge_function((p1.x, p1.y), (p2.x, p2.y), (x, y));
+                                    let w1 = edge_function((p2.x, p2.y), (p0.x, p0.y), (x, y));
+                                    let w2 = edge_function((p0.x, p0.y), (p1.x, p1.y), (x, y));
+                                    if w0 >= 0f32 && w1 >= 0f32 && w2 >= 0f32 {
+                                        // Pixel does overlap the triangle
+                                        let w0 = w0 / area;
+                                        let w1 = w1 / area;
+                                        let w2 = w2 / area;
 
-                                    let z = 1f32
-                                        / (1f32 / p0.z * w0 + 1f32 / p1.z * w1 + 1f32 / p2.z * w2);
-                                    let idx = y as usize * self.output_width as usize + x as usize;
-                                    if z < depth_buffer[idx] {
-                                        depth_buffer[idx] = z;
-                                        let c0 = a0.color;
-                                        let c1 = a1.color;
-                                        let c2 = a2.color;
+                                        let z = 1f32
+                                            / (1f32 / p0.z * w0
+                                                + 1f32 / p1.z * w1
+                                                + 1f32 / p2.z * w2);
+                                        let idx =
+                                            y as usize * self.output_width as usize + x as usize;
+                                        if z < depth_buffer[idx] {
+                                            depth_buffer[idx] = z;
+                                            let c0 = a0.color;
+                                            let c1 = a1.color;
+                                            let c2 = a2.color;
 
-                                        let r = w0 * c0.red + w1 * c1.red + w2 * c2.red;
-                                        let g = w0 * c0.green + w1 * c1.green + w2 * c2.green;
-                                        let b = w0 * c0.blue + w1 * c1.blue + w2 * c2.blue;
+                                            let r = w0 * c0.red + w1 * c1.red + w2 * c2.red;
+                                            let g = w0 * c0.green + w1 * c1.green + w2 * c2.green;
+                                            let b = w0 * c0.blue + w1 * c1.blue + w2 * c2.blue;
 
-                                        // Multiply by z to achieve perspective correct
-                                        // interpolation of color attributes.
-                                        let c = Srgba::new(r * z, g * z, b * z, 1f32);
-                                        Some(Shape2D::Pixel(Pixel {
-                                            x: x as i32,
-                                            y: y as i32,
-                                            color: c,
-                                        }))
+                                            // Multiply by z to achieve perspective correct
+                                            // interpolation of color attributes.
+                                            let c = Srgba::new(r * z, g * z, b * z, 1f32);
+                                            Some(Shape2D::Pixel(Pixel {
+                                                x: x as i32,
+                                                y: y as i32,
+                                                color: c,
+                                            }))
+                                        } else {
+                                            None
+                                        }
                                     } else {
                                         None
                                     }
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect_vec()
-                    })
-                    .collect_vec();
+                                })
+                                .collect_vec()
+                        })
+                        .collect_vec()
+                } else {
+                    vec![]
+                };
 
-                let lines = o
-                    .indices()
-                    .iter()
-                    .map(|t| {
-                        LineBuilder::<WuLine>::new()
-                            .color(Srgba::new(0.7f32, 0.5f32, 0.6f32, 1f32))
-                            .from((points[t.0].x as i32, points[t.0].y as i32))
-                            .to((points[t.1].x as i32, points[t.1].y as i32))
-                            .to((points[t.2].x as i32, points[t.2].y as i32))
-                            .close()
-                            .shape()
-                    })
-                    .collect_vec();
+                let lines = if self.show_wireframe {
+                    o.indices()
+                        .iter()
+                        .map(|t| {
+                            LineBuilder::<WuLine>::new()
+                                .color(Srgba::new(0.7f32, 0.5f32, 0.6f32, 1f32))
+                                .from((points[t.0].x as i32, points[t.0].y as i32))
+                                .to((points[t.1].x as i32, points[t.1].y as i32))
+                                .to((points[t.2].x as i32, points[t.2].y as i32))
+                                .close()
+                                .shape()
+                        })
+                        .collect_vec()
+                } else {
+                    vec![]
+                };
 
                 [planes, lines]
             })

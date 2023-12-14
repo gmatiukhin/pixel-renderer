@@ -1,5 +1,5 @@
 use glam::Vec3;
-use palette::Srgb;
+use palette::{Srgb, Srgba};
 use pixel_renderer::{
     camera::{Camera, FitStrategy},
     renderer::{Mesh3D, Rasterizer, VertexAttribute, World},
@@ -14,13 +14,17 @@ use winit::{
     window::WindowBuilder,
 };
 
+use obj::{load_obj, Obj};
+use std::fs::File;
+use std::io::BufReader;
+
 fn main() {
     let width = 512;
     let height = 512;
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
         .with_title("Pixel Renderer")
-        .with_resizable(false)
+        .with_resizable(true)
         .with_inner_size::<LogicalSize<i32>>((width, height).into())
         .build(&event_loop)
         .unwrap();
@@ -37,77 +41,10 @@ fn main() {
             .unwrap()
     };
 
-    struct Cube;
-
-    impl Mesh3D for Cube {
-        fn vertices(&self) -> Vec<glam::Vec3> {
-            vec![
-                (2f32, -2f32, -5f32).into(),
-                (2f32, -2f32, -3f32).into(),
-                (2f32, 2f32, -5f32).into(),
-                (2f32, 2f32, -3f32).into(),
-                (-1f32, -2f32, -5f32).into(),
-                (-1f32, -2f32, -3f32).into(),
-                (-1f32, 2f32, -5f32).into(),
-                (-1f32, 2f32, -3f32).into(),
-            ]
-        }
-
-        fn indices(&self) -> Vec<(usize, usize, usize)> {
-            // Sides
-            vec![
-                // Right
-                (0, 1, 2),
-                (1, 3, 2),
-                // Left
-                (4, 6, 5),
-                (5, 6, 7),
-                // Top
-                (2, 3, 6),
-                (3, 7, 6),
-                // Bottom
-                (0, 4, 1),
-                (1, 4, 5),
-                // Near
-                (1, 5, 3),
-                (3, 5, 7),
-                // Far
-                (0, 2, 4),
-                (2, 6, 4),
-            ]
-        }
-
-        fn attributes(&self) -> Vec<VertexAttribute> {
-            vec![
-                VertexAttribute {
-                    color: Srgb::new(1f32, 1f32, 1f32),
-                },
-                VertexAttribute {
-                    color: Srgb::new(1f32, 0.5f32, 1f32),
-                },
-                VertexAttribute {
-                    color: Srgb::new(0f32, 1f32, 0.5f32),
-                },
-                VertexAttribute {
-                    color: Srgb::new(0.5f32, 0f32, 1f32),
-                },
-                VertexAttribute {
-                    color: Srgb::new(1f32, 0f32, 1f32),
-                },
-                VertexAttribute {
-                    color: Srgb::new(0f32, 1f32, 1f32),
-                },
-                VertexAttribute {
-                    color: Srgb::new(0f32, 0f32, 0f32),
-                },
-                VertexAttribute {
-                    color: Srgb::new(1f32, 0f32, 0f32),
-                },
-            ]
-        }
-    }
-
-    let _c = Cube;
+    let args: Vec<String> = std::env::args().collect();
+    let input =
+        BufReader::new(File::open(args[1].clone()).expect("Could not open file with given path"));
+    let obj = ObjWrapper(load_obj(input).expect("Could not load obj file at the given path"));
 
     let mut world = World {
         camera: Camera {
@@ -116,15 +53,17 @@ fn main() {
             near: 0.1f32,
             far: 10f32,
             fit_strategy: FitStrategy::Overscan,
-            position: Vec3::ZERO,
+            position: Vec3::new(0f32, 0f32, 2f32),
             yaw: Rad32::new(-90f32),
             pitch: Rad32::new(0f32),
         },
         renderer: Rasterizer {
             output_width: width,
             output_height: height,
+            show_wireframe: false,
+            show_polygons: true,
         },
-        objects: vec![Box::new(_c)],
+        objects: vec![Box::new(obj)],
     };
 
     let mut last_time = std::time::Instant::now();
@@ -233,5 +172,39 @@ fn main() {
         }
     }) {
         eprint!("Event loop error: {e:?}");
+    }
+}
+
+struct ObjWrapper(Obj);
+
+impl Mesh3D for ObjWrapper {
+    fn vertices(&self) -> Vec<Vec3> {
+        self.0
+            .vertices
+            .iter()
+            .map(|v| {
+                let p = v.position;
+                Vec3::new(p[0], p[1], p[2])
+            })
+            .collect()
+    }
+
+    fn indices(&self) -> Vec<(usize, usize, usize)> {
+        self.0
+            .indices
+            .chunks(3)
+            .map(|e| (e[0] as usize, e[1] as usize, e[2] as usize))
+            .collect()
+    }
+
+    fn attributes(&self) -> Vec<VertexAttribute> {
+        let n = self.0.vertices.len();
+
+        vec![
+            VertexAttribute {
+                color: Srgb::new(1f32, 1f32, 1f32),
+            };
+            n
+        ]
     }
 }

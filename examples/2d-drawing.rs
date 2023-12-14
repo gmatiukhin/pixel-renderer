@@ -18,7 +18,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
         .with_title("Pixel Renderer")
-        .with_resizable(false)
+        .with_resizable(true)
         .with_inner_size::<LogicalSize<i32>>((width, height).into())
         .build(&event_loop)
         .unwrap();
